@@ -34,16 +34,3 @@ def ce_loss(logits, labels, mask=None):
     else:
         loss = torch.mean(loss)
     return loss
-
-
-def pu_loss_with_ce(logits, labels, prior, mask=None):
-    ones = torch.ones(logits.shape[:-1], requires_grad=False).to(logits.device)
-    zeros = torch.zeros(logits.shape[:-1], requires_grad=False).to(logits.device)
-    mask = torch.ones_like(labels, requires_grad=False).to(logits.device) if mask is None else mask
-
-    p_risk = ce_loss(logits, ones, mask=mask & (labels == 1))
-    u_risk = ce_loss(logits, zeros, mask=mask & (labels == 0))
-    n_risk = u_risk - prior * ce_loss(logits, zeros, mask=mask & (labels == 1))
-    loss = prior * p_risk + n_risk if n_risk >= 0 else -n_risk
-
-    return loss
