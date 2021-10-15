@@ -68,12 +68,17 @@ class InputFeatures(object):
         return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
 
 
-def convert_examples_to_features(examples, tokenizer, max_seq_length, hidden_prompt):
+def convert_examples_to_features(examples, tokenizer, max_seq_length, prompt_length):
     features = []
     for (ex_index, example) in enumerate(tqdm(examples, desc="Converting Examples")):
-        encoded = {"guid": example.guid, "prompt_ids": example.relation_id}
+        encoded = {"guid": example.guid}
 
-        input_text = (example.relation, example.context) if not hidden_prompt else example.context
+        if prompt_length > 0:
+            input_text = (' '.join([tokenizer.mask_token] * prompt_length), example.context)
+            # input_text = (' '.join([tokenizer.mask_token] * prompt_length) + ' ' + example.relation, example.context)
+        else:
+            input_text = example.context
+            # input_text = (' '.join([tokenizer.mask_token] * 5) + ' ' + example.relation, example.context)
         encoded.update(tokenizer.encode_plus(
             input_text,
             truncation="longest_first",
@@ -82,9 +87,12 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, hidden_pro
             return_offsets_mapping=True,
         ))
         tokenizer.pad(encoded, padding="max_length", max_length=max_seq_length)
+        encoded["prompt_ids"] = [
+            _ for _ in range(example.relation_id * prompt_length, (example.relation_id + 1) * prompt_length)
+        ]
 
         char2token = []
-        offset = encoded["input_ids"].index(tokenizer.sep_token_id) if not hidden_prompt else 0
+        offset = encoded["input_ids"].index(tokenizer.sep_token_id) if isinstance(input_text, tuple) else 0
         for char_index in range(len(example.context)):
             for token_index, (start, end) in enumerate(encoded["offset_mapping"][offset:]):
                 if char_index < start:
@@ -107,7 +115,9 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, hidden_pro
         if ex_index < 5:
             logger.info("*** Example ***")
             logger.info("guid: {}".format(encoded["guid"]))
-            logger.info("input_ids: {}".format(encoded["input_ids"]))
+            logger.info("input ids: {}".format(encoded["input_ids"]))
+            logger.info("prompt ids: {}".format(encoded["prompt_ids"]))
+            logger.info("input text: {}".format(input_text))
             logger.info("relation: {}".format(example.relation))
             for start, end in example.entities:
                 logger.info("golden entity: {}".format(example.context[start:end]))
@@ -125,17 +135,17 @@ class DataProcessor:
             model_type,
             model_name_or_path,
             max_seq_length,
-            hidden_prompt=False,
+            prompt_length,
             data_dir="",
             overwrite_cache=False
     ):
         self.model_type = model_type
         self.model_name_or_path = model_name_or_path
         self.max_seq_length = max_seq_length
-        self.hidden_prompt = hidden_prompt
+        self.prompt_length = prompt_length
 
         self.data_dir = data_dir
-        self.cache_dir = os.path.join(data_dir, "cache_{}".format("discrete" if not hidden_prompt else "continuous"))
+        self.cache_dir = os.path.join(data_dir, "cache_{:02d}".format(prompt_length))
         self.overwrite_cache = overwrite_cache
 
         self.relation_types = [_.strip() for _ in read_file(os.path.join(data_dir, "schema.txt"))]
@@ -146,11 +156,11 @@ class DataProcessor:
 
     def process_data_file(self, filename):
         for entry in read_json_lines(filename):
-            rel2entities = defaultdict(set)
+            rel2ent = defaultdict(set)
             for triple in entry['triples']:
-                rel2entities[triple['relation']].add((triple['head']['start'], triple['head']['end']))
-                rel2entities[triple['relation']].add((triple['tail']['start'], triple['tail']['end']))
-            for relation, entities in rel2entities.items():
+                rel2ent[triple['relation']].add((triple['head']['start'], triple['head']['end']))
+                rel2ent[triple['relation']].add((triple['tail']['start'], triple['tail']['end']))
+            for relation, entities in rel2ent.items():
                 yield {
                     'context': entry['context'],
                     'relation': relation,
@@ -189,7 +199,7 @@ class DataProcessor:
             logger.info("Loading features from cached file {}".format(cached_features))
             features = torch.load(cached_features)
         else:
-            features = convert_examples_to_features(examples, tokenizer, self.max_seq_length, self.hidden_prompt)
+            features = convert_examples_to_features(examples, tokenizer, self.max_seq_length, self.prompt_length)
             logger.info("Saving features into cached file {}".format(cached_features))
             torch.save(features, cached_features)
 
@@ -224,9 +234,9 @@ def run_test():
     from src.utils import init_logger
 
     init_logger(logging.INFO)
-    tokenizer = AutoTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-cased', use_fast=True)
     processor = DataProcessor(
-        'bert', 'bert-base-cased', max_seq_length=256, data_dir='../../data/NYT', overwrite_cache=True
+        'bert', 'bert-base-cased', max_seq_length=256, prompt_length=5, data_dir='../../data/NYT', overwrite_cache=True
     )
     processor.load_and_cache_data(tokenizer, 'test')
 

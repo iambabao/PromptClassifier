@@ -92,7 +92,7 @@ def train(args, data_processor, model, tokenizer, role):
                 "length": batch[4].to(args.device),
                 "labels": batch[-1].to_dense().to(args.device),
             }
-            if args.hidden_prompt:
+            if args.prompt_length > 0:
                 inputs["prompt_ids"] = batch[1].to(args.device)
             # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use token_type_ids
             if args.model_type in ["bert", "xlnet", "albert"]:
@@ -188,7 +188,7 @@ def evaluate(args, data_processor, model, tokenizer, role, prefix=""):
                 "length": batch[4].to(args.device),
                 "labels": batch[-1].to_dense().to(args.device),
             }
-            if args.hidden_prompt:
+            if args.prompt_length > 0:
                 inputs["prompt_ids"] = batch[1].to(args.device)
             # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use token_type_ids
             if args.model_type in ["bert", "xlnet", "albert"]:
@@ -248,9 +248,8 @@ def main():
         help="The maximum total input sequence length after WordPiece tokenization. Sequences "
         "longer than this will be truncated, and sequences shorter than this will be padded.",
     )
-    parser.add_argument(
-        "--hidden_prompt", action="store_true", help="Set this flag if you are using continuous prompt."
-    )
+    parser.add_argument("--prompt_length", default=0, type=int, help="The length of prompt.")
+    parser.add_argument("--prompt_embeddings", default=None, type=str, help="Path to the initial embeddings of prompt.")
     parser.add_argument(
         "--do_lower_case", action="store_true", help="Set this flag if you are using an uncased model."
     )
@@ -338,11 +337,11 @@ def main():
     if args.do_train:
         args.output_dir = os.path.join(
                 args.output_dir,
-                "{}_{}_{}_{}_{:.1e}".format(
+                "{}_{}_{}_{:02d}_{:.1e}".format(
                     args.model_type,
                     list(filter(None, args.model_name_or_path.split("/"))).pop(),
                     args.max_seq_length,
-                    "discrete" if not args.hidden_prompt else "continuous",
+                    args.prompt_length,
                     args.learning_rate,
                 ),
             )
@@ -367,11 +366,11 @@ def main():
         os.makedirs(args.log_dir, exist_ok=True)
         args.log_file = os.path.join(
             args.log_dir,
-            "{}_{}_{}_{}_{:.1e}.txt".format(
+            "{}_{}_{}_{:02d}_{:.1e}.txt".format(
                 args.model_type,
                 list(filter(None, args.model_name_or_path.split("/"))).pop(),
                 args.max_seq_length,
-                "discrete" if not args.hidden_prompt else "continuous",
+                args.prompt_length,
                 args.learning_rate,
             ),
         )
@@ -388,8 +387,8 @@ def main():
         args.model_type,
         args.model_name_or_path,
         args.max_seq_length,
+        args.prompt_length,
         data_dir=args.data_dir,
-        hidden_prompt=args.hidden_prompt,
         overwrite_cache=args.overwrite_cache,
     )
     config = AutoConfig.from_pretrained(
@@ -405,7 +404,9 @@ def main():
     )
     model_class = MODEL_MAPPING[args.model_type]
     # Add custom params for model
-    config.prompt_vocab_size = len(data_processor.relation_types)
+    config.prompt_length = args.prompt_length
+    config.prompt_vocab_size = args.prompt_length * len(data_processor.relation_types)
+    config.prompt_embeddings = args.prompt_embeddings
     model = model_class.from_pretrained(
         args.model_name_or_path,
         config=config,

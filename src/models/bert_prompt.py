@@ -27,8 +27,16 @@ class BertEmbeddingsWithPrompt(nn.Module):
     def __init__(self, config):
         super().__init__()
 
+        self.prompt_length = config.prompt_length
+
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
-        self.prompt_embeddings = nn.Embedding(config.prompt_vocab_size, config.hidden_size)
+        if config.prompt_embeddings is None:
+            logger.info("Initialize prompt embeddings from scratch")
+            self.prompt_embeddings = nn.Embedding(config.prompt_vocab_size, config.hidden_size)
+        else:
+            logger.info("Initialize prompt embeddings from {}".format(config.prompt_embeddings))
+            initial = torch.tensor(torch.load(config.prompt_embeddings))
+            self.prompt_embeddings = nn.Embedding.from_pretrained(initial, freeze=False)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
 
@@ -69,9 +77,12 @@ class BertEmbeddingsWithPrompt(nn.Module):
             inputs_embeds = self.word_embeddings(input_ids)
         if prompts_embeds is None:
             prompts_embeds = self.prompt_embeddings(prompt_ids)
-            prompts_embeds = prompts_embeds.unsqueeze(1)
+        inputs_embeds = torch.cat(
+            [inputs_embeds[:, :1, :], prompts_embeds, inputs_embeds[:, 1 + self.prompt_length:, :]], dim=1
+        )
+
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
-        embeddings = inputs_embeds + prompts_embeds + token_type_embeddings
+        embeddings = inputs_embeds + token_type_embeddings
         if self.position_embedding_type == "absolute":
             position_embeddings = self.position_embeddings(position_ids)
             embeddings += position_embeddings
@@ -228,6 +239,7 @@ class BertClassifierWithPrompt(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
+        self.prompt_length = config.prompt_length
         self.num_labels = config.num_labels
 
         self.bert = BertModelWithPrompt(config)
@@ -256,7 +268,7 @@ class BertClassifierWithPrompt(BertPreTrainedModel):
         indexes = torch.arange(max_seq_length).expand(batch_size, max_seq_length).to(self.device)
 
         # mask for real tokens with shape (batch_size, max_seq_length)
-        token_mask = torch.less(indexes, length.unsqueeze(-1))
+        token_mask = torch.less(torch.greater(indexes, self.prompt_length + 1), length.unsqueeze(-1))
         # mask for valid spans with shape (batch_size, max_seq_length, max_seq_length)
         span_mask = torch.logical_and(
             token_mask.unsqueeze(-1).expand(-1, -1, max_seq_length),
@@ -302,7 +314,8 @@ def run_test():
 
     init_logger(logging.INFO)
     config = AutoConfig.from_pretrained('bert-base-cased')
-    config.prompt_vocab_size = 10
+    config.prompt_length = 10
+    config.prompt_vocab_size = 50
     model = BertClassifierWithPrompt.from_pretrained('bert-base-cased', config=config)
 
     for n, p in model.named_parameters():
