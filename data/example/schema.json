@@ -1,0 +1,306 @@
+{
+    "Movement:Transport": [
+        "Agent",
+        "Artifact",
+        "Destination",
+        "Origin",
+        "Place",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-At-End",
+        "Time-Before",
+        "Time-Ending",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within",
+        "Vehicle",
+        "Victim"
+    ],
+    "Personnel:Elect": [
+        "Entity",
+        "Person",
+        "Place",
+        "Position",
+        "Time-At-Beginning",
+        "Time-Before",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Personnel:Start-Position": [
+        "Entity",
+        "Person",
+        "Place",
+        "Position",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-Before",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Personnel:Nominate": [
+        "Agent",
+        "Person",
+        "Position",
+        "Time-Within"
+    ],
+    "Personnel:End-Position": [
+        "Entity",
+        "Person",
+        "Place",
+        "Position",
+        "Time-After",
+        "Time-At-End",
+        "Time-Before",
+        "Time-Ending",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Conflict:Attack": [
+        "Agent",
+        "Attacker",
+        "Instrument",
+        "Place",
+        "Target",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-At-End",
+        "Time-Before",
+        "Time-Ending",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within",
+        "Victim"
+    ],
+    "Contact:Meet": [
+        "Entity",
+        "Place",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-Ending",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Life:Marry": [
+        "Person",
+        "Place",
+        "Time-Before",
+        "Time-Holds",
+        "Time-Within"
+    ],
+    "Contact:Phone-Write": [
+        "Entity",
+        "Place",
+        "Time-After",
+        "Time-Before",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Transaction:Transfer-Money": [
+        "Beneficiary",
+        "Giver",
+        "Money",
+        "Place",
+        "Recipient",
+        "Time-After",
+        "Time-Before",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Justice:Sue": [
+        "Adjudicator",
+        "Crime",
+        "Defendant",
+        "Place",
+        "Plaintiff",
+        "Time-Holds",
+        "Time-Within"
+    ],
+    "Conflict:Demonstrate": [
+        "Entity",
+        "Place",
+        "Time-At-End",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Business:End-Org": [
+        "Org",
+        "Place",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-Holds",
+        "Time-Within"
+    ],
+    "Life:Injure": [
+        "Agent",
+        "Instrument",
+        "Place",
+        "Time-Within",
+        "Victim"
+    ],
+    "Life:Die": [
+        "Agent",
+        "Instrument",
+        "Person",
+        "Place",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-Before",
+        "Time-Ending",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within",
+        "Victim"
+    ],
+    "Justice:Arrest-Jail": [
+        "Agent",
+        "Crime",
+        "Person",
+        "Place",
+        "Time-At-Beginning",
+        "Time-Before",
+        "Time-Ending",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Transaction:Transfer-Ownership": [
+        "Artifact",
+        "Beneficiary",
+        "Buyer",
+        "Place",
+        "Price",
+        "Seller",
+        "Time-At-Beginning",
+        "Time-Before",
+        "Time-Ending",
+        "Time-Within"
+    ],
+    "Business:Start-Org": [
+        "Agent",
+        "Org",
+        "Place",
+        "Time-After",
+        "Time-Before",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Justice:Execute": [
+        "Agent",
+        "Crime",
+        "Person",
+        "Place",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-Within"
+    ],
+    "Justice:Trial-Hearing": [
+        "Adjudicator",
+        "Crime",
+        "Defendant",
+        "Place",
+        "Prosecutor",
+        "Time-At-End",
+        "Time-Holds",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Justice:Sentence": [
+        "Adjudicator",
+        "Crime",
+        "Defendant",
+        "Place",
+        "Sentence",
+        "Time-At-End",
+        "Time-Starting",
+        "Time-Within"
+    ],
+    "Life:Be-Born": [
+        "Person",
+        "Place",
+        "Time-Holds",
+        "Time-Within"
+    ],
+    "Justice:Charge-Indict": [
+        "Adjudicator",
+        "Crime",
+        "Defendant",
+        "Place",
+        "Prosecutor",
+        "Time-Before",
+        "Time-Ending",
+        "Time-Within"
+    ],
+    "Justice:Convict": [
+        "Adjudicator",
+        "Crime",
+        "Defendant",
+        "Place",
+        "Time-At-Beginning",
+        "Time-Within"
+    ],
+    "Business:Declare-Bankruptcy": [
+        "Org",
+        "Place",
+        "Time-After",
+        "Time-At-Beginning",
+        "Time-Within"
+    ],
+    "Justice:Release-Parole": [
+        "Crime",
+        "Entity",
+        "Person",
+        "Place",
+        "Time-After",
+        "Time-Within"
+    ],
+    "Justice:Fine": [
+        "Adjudicator",
+        "Crime",
+        "Entity",
+        "Money",
+        "Place",
+        "Time-Within"
+    ],
+    "Justice:Pardon": [
+        "Adjudicator",
+        "Defendant",
+        "Place",
+        "Time-At-End"
+    ],
+    "Justice:Appeal": [
+        "Adjudicator",
+        "Crime",
+        "Place",
+        "Plaintiff",
+        "Time-Holds",
+        "Time-Within"
+    ],
+    "Justice:Extradite": [
+        "Agent",
+        "Destination",
+        "Origin",
+        "Person",
+        "Time-Within"
+    ],
+    "Life:Divorce": [
+        "Person",
+        "Place",
+        "Time-Within"
+    ],
+    "Business:Merge-Org": [
+        "Org",
+        "Time-Ending"
+    ],
+    "Justice:Acquit": [
+        "Adjudicator",
+        "Crime",
+        "Defendant",
+        "Time-Within"
+    ]
+}

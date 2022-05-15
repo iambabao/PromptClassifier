@@ -1,10 +1,11 @@
-.idea
-.vscode
+.idea/*
+.vscode/*
+/**/data/*
+/**/outputs/*
+/**/results/*
+/**/checkpoints/*
+/**/temp/*
 .DS_Store
-/**/data/
-/**/outputs/
-/**/checkpoints/
-/**/temp/
 temp.*
 *.temp.*
 temp_*
@@ -13,6 +14,8 @@ backup.*
 *.backup.*
 backup_*
 *_backup_*
+
+!data/example/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

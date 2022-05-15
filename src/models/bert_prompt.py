@@ -11,6 +11,7 @@
 import logging
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from src.models.hf_bert import (
 BertPreTrainedModel,
@@ -18,7 +19,6 @@ BertEncoder,
 BertPooler,
 BaseModelOutputWithPoolingAndCrossAttentions,
 )
-from src.models.utils import ce_loss
 
 logger = logging.getLogger(__name__)
 
@@ -243,10 +243,8 @@ class BertClassifierWithPrompt(BertPreTrainedModel):
         self.num_labels = config.num_labels
 
         self.bert = BertModelWithPrompt(config)
-        self.start_layer = nn.Linear(config.hidden_size, config.hidden_size)
-        self.end_layer = nn.Linear(config.hidden_size, config.hidden_size)
         self.output_layer = nn.Sequential(
-            nn.Linear(2 * config.hidden_size, config.hidden_size),
+            nn.Linear(config.hidden_size, config.hidden_size),
             nn.ReLU(),
             nn.Dropout(config.hidden_dropout_prob),
             nn.Linear(config.hidden_size, config.num_labels),
@@ -256,25 +254,12 @@ class BertClassifierWithPrompt(BertPreTrainedModel):
 
     def forward(
             self,
-            input_ids=None,
-            prompt_ids=None,
+            input_ids,
+            prompt_ids,
             attention_mask=None,
             token_type_ids=None,
-            length=None,
-            labels=None,
+            label=None,
     ):
-        batch_size = input_ids.shape[0]
-        max_seq_length = input_ids.shape[1]
-        indexes = torch.arange(max_seq_length).expand(batch_size, max_seq_length).to(self.device)
-
-        # mask for real tokens with shape (batch_size, max_seq_length)
-        token_mask = torch.less(torch.greater(indexes, self.prompt_length + 1), length.unsqueeze(-1))
-        # mask for valid spans with shape (batch_size, max_seq_length, max_seq_length)
-        span_mask = torch.logical_and(
-            token_mask.unsqueeze(-1).expand(-1, -1, max_seq_length),
-            token_mask.unsqueeze(-2).expand(-1, max_seq_length, -1),
-        ).triu()
-
         outputs = self.bert(
             input_ids,
             prompt_ids=prompt_ids,
@@ -282,17 +267,12 @@ class BertClassifierWithPrompt(BertPreTrainedModel):
             token_type_ids=token_type_ids,
             return_dict=False,
         )
-        sequence_output = outputs[0]  # (batch_size, max_seq_length, hidden_size)
+        pooled_output = outputs[1]  # (batch_size, hidden_size)
+        logits = self.output_layer(pooled_output)
+        outputs = (logits,) + outputs
 
-        start_expanded = self.start_layer(sequence_output).unsqueeze(2).expand(-1, -1, max_seq_length, -1)
-        end_expanded = self.end_layer(sequence_output).unsqueeze(1).expand(-1, max_seq_length, -1, -1)
-        span_matrix = torch.cat([start_expanded, end_expanded], dim=-1)
-        logits = self.output_layer(span_matrix)  # (batch_size, max_num_tokens, max_num_tokens, 2)
-        outputs = (span_mask.unsqueeze(-1) * logits,) + outputs
-
-        if labels is not None:
-            labels = labels.view(-1, max_seq_length, max_seq_length)
-            loss = ce_loss(logits, labels, span_mask)
+        if label is not None:
+            loss = F.cross_entropy(logits, label)
             outputs = (loss,) + outputs
 
         return outputs  # (loss), logits, ...
@@ -306,21 +286,3 @@ class BertClassifierWithPrompt(BertPreTrainedModel):
         for n, p in self.named_parameters():
             if any(nd in n for nd in no_gradient):
                 p.requires_grad = False
-
-
-def run_test():
-    from src.utils import init_logger
-    from transformers import AutoConfig
-
-    init_logger(logging.INFO)
-    config = AutoConfig.from_pretrained('bert-base-cased')
-    config.prompt_length = 10
-    config.prompt_vocab_size = 50
-    model = BertClassifierWithPrompt.from_pretrained('bert-base-cased', config=config)
-
-    for n, p in model.named_parameters():
-        logger.info('name: {}, shape: {}, gradient: {}'.format(n, p.shape, p.requires_grad))
-
-
-if __name__ == '__main__':
-    run_test()

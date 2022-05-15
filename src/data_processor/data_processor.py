@@ -16,7 +16,6 @@ import logging
 import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
-from scipy.sparse import coo_matrix, vstack
 from torch.utils.data import TensorDataset
 
 from src.utils import read_file, read_json_lines
@@ -25,12 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 class InputExample(object):
-    def __init__(self, guid, context, relation, relation_id, entities):
+    def __init__(self, guid, context, soft_prompt, hard_prompt, label):
         self.guid = guid
         self.context = context
-        self.relation = relation
-        self.relation_id = relation_id
-        self.entities = entities
+        self.soft_prompt = soft_prompt
+        self.hard_prompt = hard_prompt
+        self.label = label
 
     def __repr__(self):
         return str(self.to_json_string())
@@ -46,14 +45,13 @@ class InputExample(object):
 
 
 class InputFeatures(object):
-    def __init__(self, guid, input_ids, prompt_ids, attention_mask=None, token_type_ids=None, length=None, labels=None):
+    def __init__(self, guid, input_ids, prompt_ids, attention_mask=None, token_type_ids=None, label=None):
         self.guid = guid
         self.input_ids = input_ids
         self.prompt_ids = prompt_ids
         self.attention_mask = attention_mask
         self.token_type_ids = token_type_ids
-        self.length = length[0]
-        self.labels = labels
+        self.label = label
 
     def __repr__(self):
         return str(self.to_json_string())
@@ -74,57 +72,32 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, prompt_len
         encoded = {"guid": example.guid}
 
         if prompt_length > 0:
-            input_text = (' '.join([tokenizer.mask_token] * prompt_length), example.context)
-            # input_text = (' '.join([tokenizer.mask_token] * prompt_length) + ' ' + example.relation, example.context)
+            # Use mask token as placeholder for soft prompt
+            input_text = (' '.join([tokenizer.mask_token] * prompt_length) + ' ' + example.hard_prompt, example.context)
         else:
-            input_text = example.context
-            # input_text = (' '.join([tokenizer.mask_token] * 5) + ' ' + example.relation, example.context)
+            input_text = (example.hard_prompt, example.context)
         encoded.update(tokenizer.encode_plus(
             input_text,
+            padding="max_length",
             truncation="longest_first",
             max_length=max_seq_length,
-            return_length=True,
-            return_offsets_mapping=True,
         ))
-        tokenizer.pad(encoded, padding="max_length", max_length=max_seq_length)
+        # Each prompt has it's own ids
         encoded["prompt_ids"] = [
-            _ for _ in range(example.relation_id * prompt_length, (example.relation_id + 1) * prompt_length)
+            _ for _ in range(example.soft_prompt * prompt_length, (example.soft_prompt + 1) * prompt_length)
         ]
+        encoded["label"] = example.label
 
-        char2token = []
-        offset = encoded["input_ids"].index(tokenizer.sep_token_id) if isinstance(input_text, tuple) else 0
-        for char_index in range(len(example.context)):
-            for token_index, (start, end) in enumerate(encoded["offset_mapping"][offset:]):
-                if char_index < start:
-                    char2token.append(token_index - 1 + offset)
-                    break
-                elif start <= char_index < end:
-                    char2token.append(token_index + offset)
-                    break
-
-        labels = [[0] * max_seq_length for _ in range(max_seq_length)]
-        for start, end in example.entities:
-            if start >= len(char2token) or end >= len(char2token):
-                continue
-            labels[char2token[start]][char2token[end - 1]] = 1
-        encoded["labels"] = coo_matrix(labels).reshape(1, max_seq_length * max_seq_length)
-
-        del encoded["offset_mapping"]
         features.append(InputFeatures(**encoded))
 
         if ex_index < 5:
             logger.info("*** Example ***")
             logger.info("guid: {}".format(encoded["guid"]))
-            logger.info("input ids: {}".format(encoded["input_ids"]))
-            logger.info("prompt ids: {}".format(encoded["prompt_ids"]))
+            logger.info("input_ids: {}".format(encoded["input_ids"]))
+            logger.info("prompt_ids: {}".format(encoded["prompt_ids"]))
+            logger.info("attention_mask: {}".format(encoded["attention_mask"]))
+            logger.info("label: {}".format(encoded["label"]))
             logger.info("input text: {}".format(input_text))
-            logger.info("relation: {}".format(example.relation))
-            for start, end in example.entities:
-                logger.info("golden entity: {}".format(example.context[start:end]))
-            for start in range(max_seq_length):
-                for end in range(start, max_seq_length):
-                    if labels[start][end] == 1:
-                        logger.info("labeled entity: {}".format(tokenizer.decode(encoded["input_ids"][start:end + 1])))
 
     return features
 
@@ -136,7 +109,9 @@ class DataProcessor:
             model_name_or_path,
             max_seq_length,
             prompt_length,
+            do_lower_case=False,
             data_dir="",
+            cache_dir="cache",
             overwrite_cache=False
     ):
         self.model_type = model_type
@@ -145,42 +120,26 @@ class DataProcessor:
         self.prompt_length = prompt_length
 
         self.data_dir = data_dir
-        self.cache_dir = os.path.join(data_dir, "cache_{:02d}".format(prompt_length))
+        self.cache_dir = os.path.join(
+            data_dir,
+            "{}_{:02d}_{}".format(cache_dir, prompt_length, "uncased" if do_lower_case else "cased")
+        )
         self.overwrite_cache = overwrite_cache
-
-        self.relation_types = [_.strip() for _ in read_file(os.path.join(data_dir, "schema.txt"))]
-        self.id2relation = {k: v for k, v in enumerate(self.relation_types)}
-        self.relation2id = {v: k for k, v in enumerate(self.relation_types)}
 
         os.makedirs(self.cache_dir, exist_ok=True)
 
-    def process_data_file(self, filename):
-        for entry in read_json_lines(filename):
-            rel2ent = defaultdict(set)
-            for triple in entry['triples']:
-                rel2ent[triple['relation']].add((triple['head']['start'], triple['head']['end']))
-                rel2ent[triple['relation']].add((triple['tail']['start'], triple['tail']['end']))
-            for relation, entities in rel2ent.items():
-                yield {
-                    'context': entry['context'],
-                    'relation': relation,
-                    'relation_id': self.relation2id[relation],
-                    'entities': entities,
-                }
-
-    def load_and_cache_data(self, tokenizer, role, suffix=None):
+    def load_and_cache_data(self, tokenizer, split, suffix=None):
         if suffix is not None:
-            role = "{}_{}".format(role, suffix)
+            split = "{}_{}".format(split, suffix)
 
-        cached_examples = os.path.join(self.cache_dir, "cached_example_{}".format(role))
+        cached_examples = os.path.join(self.cache_dir, "cached_example_{}".format(split))
         if os.path.exists(cached_examples) and not self.overwrite_cache:
             logger.info("Loading examples from cached file {}".format(cached_examples))
             examples = torch.load(cached_examples)
         else:
             examples = []
             for sample in tqdm(
-                self.process_data_file(os.path.join(self.data_dir, "data_{}.json".format(role))),
-                desc="Loading Examples",
+                read_json_lines(os.path.join(self.data_dir, "data_{}.json".format(split))), desc="Loading Examples",
             ):
                 sample['guid'] = len(examples)
                 examples.append(InputExample(**sample))
@@ -190,7 +149,7 @@ class DataProcessor:
         cached_features = os.path.join(
             self.cache_dir,
             "cached_feature_{}_{}_{}".format(
-                role,
+                split,
                 list(filter(None, self.model_name_or_path.split("/"))).pop(),
                 self.max_seq_length,
             ),
@@ -213,33 +172,10 @@ class DataProcessor:
             all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
         else:
             all_token_type_ids = torch.tensor([[0] * self.max_seq_length for _ in features], dtype=torch.long)
-        all_length = torch.tensor([f.length for f in features], dtype=torch.long)
-        all_labels = vstack([f.labels for f in features])
-        all_labels = torch.sparse_coo_tensor(
-            torch.tensor(np.vstack([all_labels.row, all_labels.col]), dtype=torch.long),
-            torch.tensor(all_labels.data, dtype=torch.long),
-            size=all_labels.shape,
-            dtype=torch.long,
-        )
+        all_label = torch.tensor([f.label for f in features], dtype=torch.long)
 
         dataset = TensorDataset(
-            all_input_ids, all_prompt_ids, all_attention_mask, all_token_type_ids, all_length, all_labels
+            all_input_ids, all_prompt_ids, all_attention_mask, all_token_type_ids, all_label,
         )
 
         return dataset
-
-
-def run_test():
-    from transformers import AutoTokenizer
-    from src.utils import init_logger
-
-    init_logger(logging.INFO)
-    tokenizer = AutoTokenizer.from_pretrained('bert-base-cased', use_fast=True)
-    processor = DataProcessor(
-        'bert', 'bert-base-cased', max_seq_length=256, prompt_length=5, data_dir='../../data/NYT', overwrite_cache=True
-    )
-    processor.load_and_cache_data(tokenizer, 'test')
-
-
-if __name__ == '__main__':
-    run_test()

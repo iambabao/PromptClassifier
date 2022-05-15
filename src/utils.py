@@ -11,6 +11,7 @@
 import json
 import random
 import logging
+from sklearn.metrics import precision_recall_fscore_support
 
 logger = logging.getLogger(__name__)
 
@@ -152,49 +153,18 @@ def make_batch_iter(data, batch_size, shuffle):
 
 
 # ====================
-def generate_outputs(predicted, golden, input_ids, tokenizer):
-    golden = golden.reshape(predicted.shape)
-
-    outputs = []
-    for predicted_flags, golden_flags, ids in zip(predicted, golden, input_ids):
-        predicted_outputs, golden_outputs = [], []
-        rows, cols = golden_flags.shape
-        for i in range(rows):
-            for j in range(cols):
-                if predicted_flags[i][j]:
-                    predicted_outputs.append(tokenizer.decode(ids[i:j + 1]))
-                if golden_flags[i][j]:
-                    golden_outputs.append(tokenizer.decode(ids[i:j + 1]))
-        outputs.append({'predicted': predicted_outputs, 'golden': golden_outputs})
-    return outputs
-
-
 def refine_outputs(examples, outputs):
     refined_outputs = []
-    for example, entry in zip(examples, outputs):
-        refined_outputs.append({'context': example.context, 'predicted': entry['predicted'], 'golden': entry['golden']})
+    for example, predicted in zip(examples, outputs):
+        refined_outputs.append({'context': example.context, 'golden': example.label, 'predicted': predicted})
     return refined_outputs
 
 
 def compute_metrics(outputs):
-    results = {'Golden': 0, 'Predicted': 0, 'Matched': 0}
+    golden, predicted = [], []
     for entry in outputs:
-        golden = set(entry['golden'])
-        predicted = set(entry['predicted'])
-        results['Golden'] += len(golden)
-        results['Predicted'] += len(predicted)
-        results['Matched'] += len(golden & predicted)
-    if results['Golden'] == 0:
-        if results['Predicted'] == 0:
-            results['Precision'] = results['Recall'] = results['F1'] = 1.0
-        else:
-            results['Precision'] = results['Recall'] = results['F1'] = 0.0
-    else:
-        if results['Matched'] == 0 or results['Predicted'] == 0:
-            results['Precision'] = results['Recall'] = results['F1'] = 0.0
-        else:
-            results['Precision'] = results['Matched'] / results['Predicted']
-            results['Recall'] = results['Matched'] / results['Golden']
-            results['F1'] = 2 * results['Precision'] * results['Recall'] / (results['Precision'] + results['Recall'])
-    results['average'] = sum([len(item['predicted']) for item in outputs]) / len(outputs)
+        golden.append(entry['golden'])
+        predicted.append(entry['predicted'])
+    p, r, f, _ = precision_recall_fscore_support(golden, predicted, average='micro')
+    results = {'Precision': p, 'Recall': r, 'F1': f}
     return results
